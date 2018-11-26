@@ -14,7 +14,7 @@ if ~exist('participant', 'var')
     clc;
     
     % get participant information
-    argindlg = inputdlg({'Identifier (S##)','Gender (M/F)','Age (y)','Handedness (L/R)', 'MRI (0,1)', 'Training (0) or Task (1)'},'',1);
+    argindlg = inputdlg({'Identifier (S##)','Gender (M/F)','Age (y)','Handedness (L/R)', 'MRI (0,1)', 'eyetracker (0,1)', 'Training (0) or Task (1)'},'',1);
     if isempty(argindlg)
         error('Experiment cancelled!');
     end
@@ -25,13 +25,22 @@ if ~exist('participant', 'var')
     participant.age        = argindlg{3};
     participant.handedness = argindlg{4};
     participant.date       = datestr(now,'yyyymmdd-HHMM');
-    task = str2double(argindlg{6});
+    task = str2double(argindlg{7});
     
     % check subject identifier
     sid = sscanf(participant.identifier,'S%d');
     if isempty(sid)
         error('Invalid subject identifier!');
     end
+    
+    % set eyetracker code as the pre_definite in case of missing input argument
+    if isempty(argindlg{6})
+            eyetracker = 1;
+    else
+        eyetracker = str2double(argindlg{6});
+    end
+
+    
     
     % set MRI code as the pre_definite in case of missing input argument
     if isempty(argindlg{5})
@@ -87,11 +96,12 @@ else
         ibloc = 1;
     end
     
+    
     % print inform on block about to run
     fprintf('Running Block %d', ibloc)
     
     % run experiment
-    [stimulus,response,cresponse,tstimcheck,T0,simulate_respCheck] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus, isIRM, ibloc, isRobot);
+    [stimulus,response,cresponse,tstimcheck,T0,simulate_respCheck] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus, isIRM, eyetracker, ibloc, isRobot);
     
     % after the block has been executed let's update doneBlocks
     doneBlocks = ibloc;

@@ -1,12 +1,32 @@
 
-function [stimulus,response,cresponse,tstimcheck, T0, simulate_respCheck] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus,isIRM, ibloc, isRobot)
+function [stimulus,response,cresponse,tstimcheck, T0, simulate_respCheck] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus,isIRM, eyetracker, ibloc, isRobot)
 
-eyetracker = 0;
-
-%% General settings and variables initialisation
 % add toolbox functions
 addpath('./Toolbox/IO');
 addpath('./Toolbox/Draw');
+addpath('../../StimTemplate/');
+
+video = struct;
+if isIRM
+    video.id = 1;
+else
+    video.id = 0;
+end
+
+%% INITIALIZE EYETRACKER AND RUN CALIBRATION FOR IBLOC = 1
+if eyetracker && ibloc == 1
+    % Connect
+    Eyelink.Initialize
+    
+    % Need parameters ?
+    Eyelink.LoadParameters
+    
+    % Open equivalent of Track.exe but in PTB
+    Eyelink.OpenCalibration(video.id)
+    
+end
+
+%% General settings and variables initialisation
 
 % N blocs and stimuli
 [nblocs, nstims] = size(stimulus);
@@ -32,9 +52,9 @@ dot_x = 0.5;
 dot_y = 0.8796;
 
 % Open parallel port for triggers
-if eyetracker
-    OpenParPort;
-end
+% if eyetracker && isIRM
+%     OpenParPort;
+% end
 % ------------------------------------------------------------------------------------------------%
 %                                 TASK SETTINGS
 % ------------------------------------------------------------------------------------------------%
@@ -47,7 +67,7 @@ if isIRM
     lKeyhand = KbName('y');
     rKeyhand = KbName('b');
     keywait = rKeyhand;
-    time_exclFirstMRIvolumes = 20; % N seconds to wait after T0
+    time_exclFirstMRIvolumes = 1; % N seconds to wait after T0
 else
     keywait = KbName('space');
     lKeyhand = KbName('S');
@@ -70,7 +90,7 @@ timeGrScreen = 0.500;
 % set dot size and speed
 dotSize = 25;
 coeffm = 1;
-coeffs = 35;
+coeffs = 35; % try to undrestand why 35
 
 % ------------------------------------------------------------------------------------------------%
 %                                 SET TRIGGERS FOR EYETRACKER
@@ -103,6 +123,9 @@ first_right = 12;
 second_left = 21;
 second_right = 22;
 
+%%%%%%%% T0 TRIGGER %%%%%%%%%
+t0_trig = 30;
+
 %% END OF SETTINGS, START SCRIPT
 
 % Is this a pilot session with simulated responses?
@@ -124,13 +147,11 @@ try
     HideCursor;
     FlushEvents;
     ListenChar(2);
-    Screen('Preference','VisualDebuglevel',3);
+    Screen('Preference','VisualDebuglevel',1); % it was 3
     Screen('Preference','SkipSyncTests',0);
     PsychImaging('PrepareConfiguration');
     PsychImaging('AddTask','General','UseFastOffscreenWindows');
     PsychImaging('AddTask','General','NormalizedHighresColorRange');
-    video = struct;
-    video.id = 0;
     video.h = PsychImaging('OpenWindow',video.id,0);
     [video.x,video.y] = Screen('WindowSize',video.h);
     video.ifi = Screen('GetFlipInterval',video.h,100,50e-6,10);
@@ -264,9 +285,15 @@ try
     labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2+ (0.05*video.y));
     Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
     
-    labeltxt = strcat('Merci d''appuyer sur espace pour lancer le bloc n°',num2str(ibloc),'/6.');
-    labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2+ (0.4*video.y));
-    Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
+    if isIRM
+        labeltxt = strcat('Merci d''appuyer sur la touche droite pour lancer le bloc n°',num2str(ibloc),'/6.');
+        labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2+ (0.4*video.y));
+        Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
+    else
+        labeltxt = strcat('Merci d''appuyer sur espace pour lancer le bloc n°',num2str(ibloc),'/6.');
+        labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2+ (0.4*video.y));
+        Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
+    end
     
     Screen('DrawingFinished',video.h);
     Screen('Flip',video.h,t+roundfr(1.000+0.250*rand));
@@ -274,44 +301,88 @@ try
     % wait for the subject to press a button to end instructions
     WaitKeyPress(keywait);
     
+    % start recording Eyelink file
+    if eyetracker
+        Eyelink.StartRecording(sprintf('S%02d_bl%d',sid,ibloc)), % open file, start recording
+    end
+
     % In the IRM, wait for the trigger of the 1st volume and wait N seconds before starting.
     if isIRM
+        
+        % fixation cross
+        [cross, ~, alpha] = imread('CROSS3.png');
+        cross(:,:,4) = alpha(:,:);
+        
+        % grey screen
+        img_greyscreen = double(imread('Greyscreen.jpg'))/255;
+        img_greyscreen = img_greyscreen(:,:,1);
+        
         % signal to the subject that the task is about to start
         labeltxt = 'La tâche va commencer bientôt';
         labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2- (0.10*video.y));
         Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
         Screen('DrawingFinished',video.h);
-       
+        
         % flip and wait for the first MRI volume
         Screen('Flip',video.h);
         [~, T0, ~] = WaitKeyPress(IRMvolumeTrig); % wait for MRI trigger
+
+        % SEND T0 TRIGGER
+        %             WriteParPort(t0_trig)
+        %             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+        %             WriteParPort(0)
+        Eyelink('Message', ['Trigger ' num2str(t0_trig)])
+        WaitSecs(0.003)
+        
+         
+        % signal to the subject that he needs to prepare!
+        labeltxt = 'Préparez-vous !';
+        labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2- (0.10*video.y));
+        Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
+        Screen('DrawingFinished',video.h);
+        
+        % flip for 0.5s
+        Screen('Flip',video.h);
+        WaitSecs(0.5)
+        
+        % display fixation for some seconds in order to let the BOLD
+        % stabilize
         
         timeCounter = GetSecs;
         while timeCounter - T0 <= time_exclFirstMRIvolumes
+            timeCounter = GetSecs;
             if CheckKeyPress(keyquit)
                 aborted = true;
                 break
             end
-            timeCounter = GetSecs;
-            labeltxt = sprintf('La tâche va commencer dans %d seconds', round((time_exclFirstMRIvolumes - (timeCounter - T0)), 0));
-            labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2- (0.10*video.y));
-            Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
-            Screen('DrawingFinished',video.h);
-            Screen('Flip',video.h)
+            
+        %grey screen
+        patchtex = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
+        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2);
+        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        
+        %cross
+        patchtex = Screen('MakeTexture',video.h,cross,[],[],[]);
+        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2-(video.y*0.3611));
+        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        
+        % Flip
+        Screen('Flip',video.h)
+
         end
         
+    else
+        
+        % just signal to the subject that he needs to prepare!
+        labeltxt = 'Préparez-vous !';
+        labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2- (0.10*video.y));
+        Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
+        Screen('DrawingFinished',video.h);
+        
+        % flip for 0.5s
+        Screen('Flip',video.h);
+        WaitSecs(0.5)
     end
-    
-    % signal to the subject that he needs to prepare!
-    labeltxt = 'Préparez-vous !';
-    labelrec = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt),video.x/2,video.y/2- (0.10*video.y));
-    Screen('DrawText',video.h,labeltxt,labelrec(1),labelrec(2),1);
-    Screen('DrawingFinished',video.h);
-    
-    % flip for 0.5s
-    Screen('Flip',video.h);
-    WaitSecs(0.5)
-    
     %% START STIMULI LOOP
     % this is useful when we simulate responses
     simulate_respCheck.firstRT = nan(1,nstims);
@@ -601,9 +672,12 @@ try
         
         if eyetracker
             % SEND STIMULUS' TRIGGER
-            WriteParPort(stimTrigger)
-            WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-            WriteParPort(0)
+%             WriteParPort(stimTrigger)
+%             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+%             WriteParPort(0)
+        Eyelink('Message', ['Trigger ' num2str(stimTrigger)])
+        WaitSecs(0.003)
+        
         else
             simulate_respCheck.stimTrigger(1,istim) = stimTrigger;
         end
@@ -619,8 +693,11 @@ try
         tstim = GetSecs;
         while ( (tstim - tstartScene) < (timeStim - (video.ifi*3)) && dot(2) > target.left(2) )
             
+            % check the length of a loop for calibration
+            %GetSecs-tstim
             %update time calculation
             tstim = GetSecs;
+            
             
             % check response
             [answerButton, answerTime_abs] = CheckKeyPress([lKeyhand,rKeyhand]);
@@ -636,9 +713,12 @@ try
                     
                     if eyetracker
                         % SEND RESPONSE's TRIGGER
-                        WriteParPort(respTrigger)
-                        WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-                        WriteParPort(0)
+                        %                         WriteParPort(respTrigger)
+                        %                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+                        %                         WriteParPort(0)
+                        
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        WaitSecs(0.003)
                     else
                         simulate_respCheck.first_respTrigger(1,istim) = respTrigger;
                     end
@@ -649,9 +729,11 @@ try
                     
                     if eyetracker
                         % SEND RESPONSE's TRIGGER
-                        WriteParPort(respTrigger)
-                        WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-                        WriteParPort(0)
+%                         WriteParPort(respTrigger)
+%                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+%                         WriteParPort(0)
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        WaitSecs(0.003)
                     else
                         simulate_respCheck.second_respTrigger(1,istim) = respTrigger;
                     end
@@ -667,9 +749,11 @@ try
                     
                     if eyetracker
                         % SEND RESPONSE's TRIGGER
-                        WriteParPort(respTrigger)
-                        WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-                        WriteParPort(0)
+%                         WriteParPort(respTrigger)
+%                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+%                         WriteParPort(0)
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        WaitSecs(0.003)
                     else
                         simulate_respCheck.first_respTrigger(1,istim) = respTrigger;
                     end
@@ -680,9 +764,11 @@ try
                     
                     if eyetracker
                         % SEND RESPONSE's TRIGGER
-                        WriteParPort(respTrigger)
-                        WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-                        WriteParPort(0)
+%                         WriteParPort(respTrigger)
+%                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+%                         WriteParPort(0)
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        WaitSecs(0.003)
                     else
                         simulate_respCheck.second_respTrigger(1,istim) = respTrigger;
                     end
@@ -891,6 +977,9 @@ try
             end
             
             tflip = Screen('Flip',video.h);
+            WaitSecs(video.ifi)
+            % tflip = GetSecs;
+            
             if tpreptotal == 0
                 tpreptotal = tflip-tstim;
             end
@@ -906,7 +995,7 @@ try
                         rob.keyRelease(KeyEvent.VK_B)
                     end
                 end
-                
+            
                 break;
             end
         end
@@ -998,7 +1087,11 @@ try
         
     end
     
-    
+    if eyetracker
+        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),'..\data\eyelinkData\')
+    end
+        
+
     if ~aborted
         
         maccur = mean(cresponse.iscor == 1);
@@ -1012,21 +1105,14 @@ try
         labelrec(2,:) = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt{2}),video.x/2,video.y/2+ (0.03*video.y));
         labelrec(2,:) = AlignRect(labelrec(2,:),labelrec(1,:),'left');
         framerec = [min(labelrec(:,1))-round(32),min(labelrec(:,2))-round(32),max(labelrec(:,3))+round(32),max(labelrec(:,4))+round(32)];
-        if isIRM
-            labeltxt{3} = sprintf('Appuyez sur la touche droite pour terminer ce bloc');
-        else
-            labeltxt{3} = sprintf('Appuyez sur [espace] pour terminer ce bloc');
-        end
-        labelrec(3,:) = CenterRectOnPoint(Screen('TextBounds',video.h,labeltxt{3}),video.x/2,video.y/2+ (0.185*video.y));
-        
+
         Screen('FrameRect',video.h,1,framerec,3);
         Screen('DrawText',video.h,labeltxt{1},labelrec(1,1),labelrec(1,2),1);
         Screen('DrawText',video.h,labeltxt{2},labelrec(2,1),labelrec(2,2),1);
-        Screen('DrawText',video.h,labeltxt{3},labelrec(3,1),labelrec(3,2),1);
         Screen('DrawingFinished',video.h);
         
         Screen('Flip',video.h);
-        WaitKeyPress(keywait);
+        WaitSecs(5);
         Screen('Flip',video.h);
         
     end
@@ -1058,6 +1144,9 @@ catch
     
     rethrow(lasterror);
     
+    if eyetracker
+        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),'..\data\eyelinkData\')
+    end
     
 end
 end

@@ -8,7 +8,7 @@ addpath('./Toolbox/Draw');
 
 video = struct;
 if isIRM
-    video.id = 0;
+    video.id = 1;
 else
     video.id = 0;
 end
@@ -87,10 +87,7 @@ timeStim = 1.500;
 % set gray screen fixed duration
 timeGrScreen = 0.500;
 
-% set dot size and speed
-dotSize = 25;
-coeffm = 1;
-coeffs = 35; % try to undrestand why 35
+
 
 % ------------------------------------------------------------------------------------------------%
 %                                 SET TRIGGERS FOR EYETRACKER
@@ -168,6 +165,11 @@ try
     
     roundfr = @(dt)(round(dt/video.ifi)-0.5)*video.ifi;
     aborted = false;
+    
+    % set dot size and speed
+    dotSize = 25;
+    coeffm = 1;
+    coeffs = 1/video.ifi; %
     
     % old block loop started here
     tstimcheck.greyscreen = nan(1,nstims); %%%quand écran gris apparait
@@ -332,7 +334,7 @@ try
             %             WriteParPort(t0_trig)
             %             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
             %             WriteParPort(0)
-            Eyelink('Message', ['Trigger ' num2str(t0_trig)])
+            Eyelink('Message', ['Trigger ' num2str(t0_trig)]);
             WaitSecs(0.003)
         end
          
@@ -359,7 +361,7 @@ try
             
         %grey screen
         patchtex = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2);
+        patchrct = Screen('Rect',patchtex);
         Screen('DrawTexture',video.h,patchtex,[],patchrct);
         
         %cross
@@ -529,6 +531,15 @@ try
         part = double(imread(['S' num2str(sid) '.jpg']))/255;
         part = part(:,:,1);
         
+        % Make texture for PTB in advance (faster execution time)
+        
+        img_texture   = Screen('MakeTexture',video.h,img  ,[],[],1 );
+        img2_texture  = Screen('MakeTexture',video.h,img2 ,[],[],1 );
+        grey_texture  = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
+        grey_dim      = Screen('Rect',grey_texture);
+        cross_texture = Screen('MakeTexture',video.h,cross,[],[],[]);
+        cross_dim     = Screen('Rect',cross_texture);
+        
         %% select the good trigger to send to parallel port
         
         %%%% NORMAL TRIALS
@@ -589,9 +600,8 @@ try
         % ------------------------------------------------------------------------------------------------%
         
         % grey screen without cross first
-        patchtex = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2);
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        patchrct = CenterRectOnPoint(grey_dim,video.x/2,video.y/2);
+        Screen('DrawTexture',video.h,grey_texture,[],patchrct);
         
         tstart_greyscreen = Screen('Flip',video.h);
         
@@ -600,14 +610,12 @@ try
         % ------------------------------------------------------------------------------------------------%
         
         %grey screen
-        patchtex = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2);
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        patchrct = CenterRectOnPoint(grey_dim,video.x/2,video.y/2);
+        Screen('DrawTexture',video.h,grey_texture,[],patchrct);
         
         %cross
-        patchtex = Screen('MakeTexture',video.h,cross,[],[],[]);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2-(video.y*0.3611));
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        patchrct = CenterRectOnPoint(cross_dim,video.x/2,video.y/2-(video.y*0.3611));
+        Screen('DrawTexture',video.h,cross_texture,[],patchrct);
         
         % ------------------------------------------------------------------------------------------------%
         %                                 FLIP GREY SCREEN + FIXATION
@@ -648,17 +656,14 @@ try
         patchrct2 = [video.x/2 0 video.x video.y];
         
         %1st actor male
-        patchtex = Screen('MakeTexture',video.h,img,[],[],1);
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        Screen('DrawTexture',video.h,img_texture,[],patchrct);
         
         %2nd actor male
-        patchtex = Screen('MakeTexture',video.h,img2,[],[],1);
-        Screen('DrawTexture',video.h,patchtex,[],patchrct2);
+        Screen('DrawTexture',video.h,img2_texture,[],patchrct2);
         
         %cross
-        patchtex = Screen('MakeTexture',video.h,cross,[],[],[]);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2-(video.y*0.3611));
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        patchrct = CenterRectOnPoint(cross_dim,video.x/2,video.y/2-(video.y*0.3611));
+        Screen('DrawTexture',video.h,cross_texture,[],patchrct);
         
         % draw a dot in its first position in the middle of the screen
         Screen('DrawDots', video.h, dot, dotSize, [255 0 0 1]);
@@ -676,7 +681,7 @@ try
 %             WriteParPort(stimTrigger)
 %             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
 %             WriteParPort(0)
-        Eyelink('Message', ['Trigger ' num2str(stimTrigger)])
+        Eyelink('Message', ['Trigger ' num2str(stimTrigger)]);
         WaitSecs(0.003)
         
         else
@@ -692,10 +697,11 @@ try
         % ------------------------------------------------------------------------------------------------%
         
         tstim = GetSecs;
-        while ( (tstim - tstartScene) < (timeStim - (video.ifi*3)) && dot(2) > target.left(2) )
+        while  (tstim - tstartScene) < (timeStim - video.ifi) %&& dot(2) > target.left(2) )
             
-            % check the length of a loop for calibration
-            %GetSecs-tstim
+%             tstim - tstartScene
+%             % check the length of a loop for calibration
+%             GetSecs-tstim
             %update time calculation
             tstim = GetSecs;
             
@@ -718,7 +724,7 @@ try
                         %                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
                         %                         WriteParPort(0)
                         
-                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)]);
                         WaitSecs(0.003)
                     else
                         simulate_respCheck.first_respTrigger(1,istim) = respTrigger;
@@ -733,7 +739,7 @@ try
 %                         WriteParPort(respTrigger)
 %                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
 %                         WriteParPort(0)
-                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)]);
                         WaitSecs(0.003)
                     else
                         simulate_respCheck.second_respTrigger(1,istim) = respTrigger;
@@ -753,7 +759,7 @@ try
 %                         WriteParPort(respTrigger)
 %                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
 %                         WriteParPort(0)
-                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)]);
                         WaitSecs(0.003)
                     else
                         simulate_respCheck.first_respTrigger(1,istim) = respTrigger;
@@ -768,7 +774,7 @@ try
 %                         WriteParPort(respTrigger)
 %                         WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
 %                         WriteParPort(0)
-                        Eyelink('Message', ['Trigger ' num2str(respTrigger)])
+                        Eyelink('Message', ['Trigger ' num2str(respTrigger)]);
                         WaitSecs(0.003)
                     else
                         simulate_respCheck.second_respTrigger(1,istim) = respTrigger;
@@ -819,17 +825,14 @@ try
             % here before there was an if loop to flip the images
             % differently for males and females
             %1st actor male
-            patchtex = Screen('MakeTexture',video.h,img,[],[],1);
-            Screen('DrawTexture',video.h,patchtex,[],patchrct);
+            Screen('DrawTexture',video.h,img_texture,[],patchrct);
             
             %2nd actor male
-            patchtex = Screen('MakeTexture',video.h,img2,[],[],1);
-            Screen('DrawTexture',video.h,patchtex,[],patchrct2);
+            Screen('DrawTexture',video.h,img2_texture,[],patchrct2);
             
             %cross
-            patchtex = Screen('MakeTexture',video.h,cross,[],[],[]);
-            patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2-(video.y*0.3611));
-            Screen('DrawTexture',video.h,patchtex,[],patchrct);
+            patchrct = CenterRectOnPoint(cross_dim,video.x/2,video.y/2-(video.y*0.3611));
+            Screen('DrawTexture',video.h,cross_texture,[],patchrct);
             
             % ------------------------------------------------------------------------------------------------%
             %           IN CASE OF LEFT RESPONSE FOR NORMAL TRIALS, OR RIGHT RESPONSE FOR REVERSE ONES
@@ -979,7 +982,7 @@ try
             
             tflip = Screen('Flip',video.h);
             % WaitSecs(video.ifi)
-            % tflip = GetSecs;
+%             tflip = GetSecs;
             
             if tpreptotal == 0
                 tpreptotal = tflip-tstim;
@@ -1032,17 +1035,14 @@ try
             % differently for males and females
             
             %1st actor male
-            patchtex = Screen('MakeTexture',video.h,img,[],[],1);
-            Screen('DrawTexture',video.h,patchtex,[],patchrct);
+            Screen('DrawTexture',video.h,img_texture,[],patchrct);
             
             %2nd actor male
-            patchtex = Screen('MakeTexture',video.h,img2,[],[],1);
-            Screen('DrawTexture',video.h,patchtex,[],patchrct2);
+            Screen('DrawTexture',video.h,img2_texture,[],patchrct2);
             
             %cross
-            patchtex = Screen('MakeTexture',video.h,cross,[],[],[]);
-            patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2-(video.y*0.3611));
-            Screen('DrawTexture',video.h,patchtex,[],patchrct);
+            patchrct = CenterRectOnPoint(cross_dim,video.x/2,video.y/2-(video.y*0.3611));
+            Screen('DrawTexture',video.h,cross_texture,[],patchrct);
             
             patchtex = Screen('MakeTexture',video.h,part,[],[],1);
             if response(istim).resp == 1
@@ -1079,9 +1079,8 @@ try
         
         
         %load ecran gris
-        patchtex = Screen('MakeTexture',video.h,img_greyscreen,[],[],1);
-        patchrct = CenterRectOnPoint(Screen('Rect',patchtex),video.x/2,video.y/2);
-        Screen('DrawTexture',video.h,patchtex,[],patchrct);
+        patchrct = CenterRectOnPoint(grey_dim,video.x/2,video.y/2);
+        Screen('DrawTexture',video.h,grey_texture,[],patchrct);
         t1=GetSecs;
         Screen('Flip',video.h,t1+0.300); %affichage ecran gris+cross
         Screen('Close');
@@ -1089,7 +1088,7 @@ try
     end
     
     if eyetracker
-        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),'..\data\eyelinkData\')
+        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),fullfile(fileparts(pwd),'data','eyelinkData'))
     end
         
 
@@ -1146,7 +1145,7 @@ catch
     rethrow(lasterror);
     
     if eyetracker
-        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),'..\data\eyelinkData\')
+        Eyelink.StopRecording(sprintf('S%02d_bl%d',sid,ibloc),fullfile(fileparts(pwd),'data','eyelinkData'))
     end
     
 end

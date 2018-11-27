@@ -1,14 +1,14 @@
 
-function [stimulus,response,cresponse,tstimcheck, T0, simulate_respCheck] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus,isIRM, eyetracker, ibloc, isRobot)
+function [stimulus,response,cresponse,tstimcheck, T0, simulate_respCheck, aborted] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulus,isIRM, eyetracker, ibloc, isRobot)
 
 % add toolbox functions
 addpath('./Toolbox/IO');
 addpath('./Toolbox/Draw');
-addpath('../../StimTemplate/');
+% addpath('../../StimTemplate/');
 
 video = struct;
 if isIRM
-    video.id = 1;
+    video.id = 0;
 else
     video.id = 0;
 end
@@ -327,13 +327,14 @@ try
         Screen('Flip',video.h);
         [~, T0, ~] = WaitKeyPress(IRMvolumeTrig); % wait for MRI trigger
 
-        % SEND T0 TRIGGER
-        %             WriteParPort(t0_trig)
-        %             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
-        %             WriteParPort(0)
-        Eyelink('Message', ['Trigger ' num2str(t0_trig)])
-        WaitSecs(0.003)
-        
+        if eyetracker
+            % SEND T0 TRIGGER
+            %             WriteParPort(t0_trig)
+            %             WaitSecs(0.003) % in seconds; use minium samplingRate x2, usually x3
+            %             WriteParPort(0)
+            Eyelink('Message', ['Trigger ' num2str(t0_trig)])
+            WaitSecs(0.003)
+        end
          
         % signal to the subject that he needs to prepare!
         labeltxt = 'Préparez-vous !';
@@ -367,7 +368,7 @@ try
         Screen('DrawTexture',video.h,patchtex,[],patchrct);
         
         % Flip
-        Screen('Flip',video.h)
+        Screen('Flip',video.h);
 
         end
         
@@ -977,7 +978,7 @@ try
             end
             
             tflip = Screen('Flip',video.h);
-            WaitSecs(video.ifi)
+            % WaitSecs(video.ifi)
             % tflip = GetSecs;
             
             if tpreptotal == 0

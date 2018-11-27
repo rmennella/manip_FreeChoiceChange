@@ -73,7 +73,13 @@ if ~task
     stimulustraining = ATTEMORPH_FreeKey_BuildTraining();
     
     % run training
-    [stimulustraining,responsetraining,cresponsetraining,tstimchecktraining] = ATTEMORPH_FreeKey_RunTraining(sid,stimulustraining,2);
+    for tr_bloc = 1:size(stimulustraining,1)
+        %[stimulustraining,responsetraining,cresponsetraining,tstimchecktraining] = ATTEMORPH_FreeKey_RunTraining(sid,stimulustraining,2);
+        [~,~,~,~, ~, ~, aborted] = ATTEMORPH_FreeKey_RunExperiment(sid,stimulustraining,0 , 0, tr_bloc, 0);
+        if aborted
+            break
+        end
+    end
     
 else
     %% EXPERIMENT MANIP CENTER
